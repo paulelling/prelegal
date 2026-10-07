@@ -1,0 +1,16 @@
+# Next.js
+.next/
+out/
+
+# Dependencies
+node_modules/
+
+# Testing
+coverage/
+
+# Environment
+.env*.local
+
+# OS
+.DS_Store
+Thumbs.db
