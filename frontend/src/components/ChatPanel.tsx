@@ -1,0 +1,156 @@
+'use client';
+
+import { useState, useEffect, useRef } from 'react';
+import { NDAFormData } from '@/types/nda';
+
+interface Message {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+interface FormUpdates {
+  purpose?: string | null;
+  effectiveDate?: string | null;
+  mndaTermType?: 'expires' | 'continues' | null;
+  mndaTermYears?: number | null;
+  confidentialityTermType?: 'years' | 'perpetuity' | null;
+  confidentialityTermYears?: number | null;
+  governingLaw?: string | null;
+  jurisdiction?: string | null;
+  modifications?: string | null;
+  party1?: Partial<NDAFormData['party1']> | null;
+  party2?: Partial<NDAFormData['party2']> | null;
+}
+
+interface ChatPanelProps {
+  formData: NDAFormData;
+  onFormUpdate: (updates: Partial<NDAFormData>) => void;
+}
+
+function applyFormUpdates(
+  current: Pick<NDAFormData, 'party1' | 'party2'>,
+  updates: FormUpdates,
+): Partial<NDAFormData> {
+  const { party1, party2, ...scalars } = updates;
+  const result: Partial<NDAFormData> = {};
+  for (const [key, value] of Object.entries(scalars)) {
+    if (value != null) (result as Record<string, unknown>)[key] = value;
+  }
+  if (party1 != null) result.party1 = { ...current.party1, ...party1 };
+  if (party2 != null) result.party2 = { ...current.party2, ...party2 };
+  return result;
+}
+
+export function ChatPanel({ formData, onFormUpdate }: ChatPanelProps) {
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const formDataRef = useRef(formData);
+
+  useEffect(() => {
+    formDataRef.current = formData;
+  }, [formData]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView?.({ behavior: 'smooth' });
+  }, [messages]);
+
+  useEffect(() => {
+    callChat([], formData);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function callChat(history: Message[], currentFormData: NDAFormData) {
+    setIsLoading(true);
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: history,
+          current_form_data: currentFormData,
+        }),
+      });
+      if (!res.ok) throw new Error('Chat request failed');
+      const data = await res.json();
+
+      if (data.form_updates) {
+        const updates = applyFormUpdates(currentFormData, data.form_updates);
+        if (Object.keys(updates).length > 0) {
+          onFormUpdate(updates);
+        }
+      }
+
+      setMessages(prev => [...prev, { role: 'assistant', content: data.reply }]);
+    } catch {
+      setMessages(prev => [
+        ...prev,
+        { role: 'assistant', content: "Sorry, I couldn't connect. Please try again." },
+      ]);
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const text = input.trim();
+    if (!text || isLoading) return;
+    setInput('');
+    const userMessage: Message = { role: 'user', content: text };
+    const newHistory = [...messages, userMessage];
+    setMessages(newHistory);
+    callChat(newHistory, formDataRef.current);
+  }
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex-1 overflow-y-auto space-y-4 pb-2 min-h-0">
+        {messages.map((msg, i) => (
+          <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div
+              className={`max-w-[85%] rounded-xl px-4 py-3 text-sm leading-relaxed ${
+                msg.role === 'user' ? 'text-white' : 'bg-slate-100 text-slate-800'
+              }`}
+              style={msg.role === 'user' ? { background: '#209dd7' } : {}}
+            >
+              {msg.content}
+            </div>
+          </div>
+        ))}
+        {isLoading && (
+          <div className="flex justify-start">
+            <div className="bg-slate-100 rounded-xl px-4 py-3">
+              <span className="inline-flex gap-1 items-center">
+                <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+              </span>
+            </div>
+          </div>
+        )}
+        <div ref={messagesEndRef} />
+      </div>
+
+      <form onSubmit={handleSubmit} className="pt-4 border-t border-slate-200 flex gap-2">
+        <input
+          type="text"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          placeholder="Type your message..."
+          disabled={isLoading}
+          className="input-field flex-1"
+        />
+        <button
+          type="submit"
+          disabled={isLoading || !input.trim()}
+          className="px-4 py-2 rounded-lg text-white text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          style={{ background: '#753991' }}
+        >
+          Send
+        </button>
+      </form>
+    </div>
+  );
+}

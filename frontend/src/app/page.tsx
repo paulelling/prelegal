@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { NDAForm } from '@/components/NDAForm';
+import { ChatPanel } from '@/components/ChatPanel';
 import { NDAPreview } from '@/components/NDAPreview';
 import { DownloadButton } from '@/components/DownloadButton';
-import { defaultFormData } from '@/types/nda';
+import { NDAFormData, defaultFormData } from '@/types/nda';
 
 export default function Home() {
   const router = useRouter();
@@ -18,9 +18,13 @@ export default function Home() {
     if (!raw) {
       setAuthState('unauthenticated');
     } else {
-      const parsed = JSON.parse(raw);
-      setUserEmail(parsed.email ?? '');
-      setAuthState('authenticated');
+      try {
+        const parsed = JSON.parse(raw);
+        setUserEmail(parsed.email ?? '');
+        setAuthState('authenticated');
+      } catch {
+        setAuthState('unauthenticated');
+      }
     }
   }, []);
 
@@ -33,6 +37,10 @@ export default function Home() {
   const handleSignOut = () => {
     localStorage.removeItem('prelegal_auth');
     router.push('/login');
+  };
+
+  const handleFormUpdate = (updates: Partial<NDAFormData>) => {
+    setFormData(prev => ({ ...prev, ...updates }));
   };
 
   if (authState !== 'authenticated') return null;
@@ -54,7 +62,7 @@ export default function Home() {
                 Mutual NDA Creator
               </h1>
               <p className="text-sm" style={{ color: '#888888' }}>
-                Fill in the form to generate your Mutual Non-Disclosure Agreement
+                Chat with the AI to generate your Mutual Non-Disclosure Agreement
               </p>
             </div>
           </div>
@@ -82,11 +90,11 @@ export default function Home() {
           {/* Form panel */}
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-200" style={{ background: '#f8fafc' }}>
-              <h2 className="text-base font-semibold" style={{ color: '#032147' }}>Agreement Details</h2>
-              <p className="text-sm" style={{ color: '#888888' }}>Complete all fields — the preview updates live</p>
+              <h2 className="text-base font-semibold" style={{ color: '#032147' }}>AI Assistant</h2>
+              <p className="text-sm" style={{ color: '#888888' }}>Chat with the AI to fill in your agreement</p>
             </div>
-            <div className="flex-1 overflow-y-auto p-6">
-              <NDAForm formData={formData} onChange={setFormData} />
+            <div className="flex-1 overflow-y-auto p-6 flex flex-col">
+              <ChatPanel formData={formData} onFormUpdate={handleFormUpdate} />
             </div>
           </div>
 
