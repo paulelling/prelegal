@@ -1,5 +1,6 @@
+import { useState } from 'react';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
-import { ChatPanel } from '@/components/ChatPanel';
+import { ChatPanel, ChatPanelProps, Message } from '@/components/ChatPanel';
 import { defaultFormData } from '@/types/nda';
 
 const mockFetch = jest.fn();
@@ -12,6 +13,22 @@ function makeOkResponse(reply: string, form_updates: Record<string, unknown> = {
   };
 }
 
+/** Wrapper that owns the messages state so tests can use ChatPanel's new controlled interface. */
+function ChatPanelWrapper(
+  props: Omit<ChatPanelProps, 'messages' | 'onMessagesChange' | 'token'> & { initialMessages?: Message[] },
+) {
+  const { initialMessages = [], ...rest } = props;
+  const [messages, setMessages] = useState<Message[]>(initialMessages);
+  return (
+    <ChatPanel
+      {...rest}
+      token="test-token"
+      messages={messages}
+      onMessagesChange={setMessages}
+    />
+  );
+}
+
 beforeEach(() => {
   mockFetch.mockReset();
 });
@@ -20,7 +37,7 @@ describe('ChatPanel', () => {
   it('calls /api/chat on mount to get the initial AI greeting', async () => {
     mockFetch.mockResolvedValueOnce(makeOkResponse('Hello! How can I help?'));
 
-    render(<ChatPanel formData={defaultFormData} onFormUpdate={jest.fn()} />);
+    render(<ChatPanelWrapper formData={defaultFormData} onFormUpdate={jest.fn()} />);
 
     await waitFor(() => {
       expect(mockFetch).toHaveBeenCalledWith(
@@ -33,12 +50,27 @@ describe('ChatPanel', () => {
     });
   });
 
+  it('sends auth header on /api/chat requests', async () => {
+    mockFetch.mockResolvedValueOnce(makeOkResponse('Hello!'));
+
+    render(<ChatPanelWrapper formData={defaultFormData} onFormUpdate={jest.fn()} />);
+
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/chat',
+        expect.objectContaining({
+          headers: expect.objectContaining({ Authorization: 'Bearer test-token' }),
+        }),
+      );
+    });
+  });
+
   it('shows user message and assistant reply after submitting', async () => {
     mockFetch
       .mockResolvedValueOnce(makeOkResponse('Hello!'))
       .mockResolvedValueOnce(makeOkResponse('Great, got it!'));
 
-    render(<ChatPanel formData={defaultFormData} onFormUpdate={jest.fn()} />);
+    render(<ChatPanelWrapper formData={defaultFormData} onFormUpdate={jest.fn()} />);
     await waitFor(() => screen.getByText('Hello!'));
 
     const input = screen.getByPlaceholderText('Type your message...');
@@ -57,7 +89,7 @@ describe('ChatPanel', () => {
       .mockResolvedValueOnce(makeOkResponse('Hello!'))
       .mockResolvedValueOnce(makeOkResponse('Got it!', { governingLaw: 'Delaware' }));
 
-    render(<ChatPanel formData={defaultFormData} onFormUpdate={onFormUpdate} />);
+    render(<ChatPanelWrapper formData={defaultFormData} onFormUpdate={onFormUpdate} />);
     await waitFor(() => screen.getByText('Hello!'));
 
     const input = screen.getByPlaceholderText('Type your message...');
@@ -77,7 +109,7 @@ describe('ChatPanel', () => {
       .mockResolvedValueOnce(makeOkResponse('Hello!'))
       .mockResolvedValueOnce(makeOkResponse('Sure, tell me more.', {}));
 
-    render(<ChatPanel formData={defaultFormData} onFormUpdate={onFormUpdate} />);
+    render(<ChatPanelWrapper formData={defaultFormData} onFormUpdate={onFormUpdate} />);
     await waitFor(() => screen.getByText('Hello!'));
 
     const input = screen.getByPlaceholderText('Type your message...');
@@ -100,7 +132,7 @@ describe('ChatPanel', () => {
         makeOkResponse('Got it!', { party1: { company: 'Acme' } }),
       );
 
-    render(<ChatPanel formData={formDataWithParty} onFormUpdate={onFormUpdate} />);
+    render(<ChatPanelWrapper formData={formDataWithParty} onFormUpdate={onFormUpdate} />);
     await waitFor(() => screen.getByText('Hello!'));
 
     const input = screen.getByPlaceholderText('Type your message...');
@@ -114,5 +146,23 @@ describe('ChatPanel', () => {
         }),
       );
     });
+  });
+
+  it('skips initial greeting when loaded with existing messages', async () => {
+    const existingMessages: Message[] = [
+      { role: 'assistant', content: 'Loaded from history' },
+    ];
+
+    render(
+      <ChatPanelWrapper
+        formData={defaultFormData}
+        onFormUpdate={jest.fn()}
+        initialMessages={existingMessages}
+      />,
+    );
+
+    expect(screen.getByText('Loaded from history')).toBeInTheDocument();
+    // No fetch should be called for the greeting when messages already exist
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 });
