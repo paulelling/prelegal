@@ -1,13 +1,14 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { NDAFormData } from '@/types/nda';
+import type { DocumentSlug } from '@/types/nda';
 
 export interface Message {
   role: 'user' | 'assistant';
   content: string;
 }
 
+<<<<<<< HEAD
 interface FormUpdates {
   purpose?: string | null;
   effectiveDate?: string | null;
@@ -52,16 +53,37 @@ export function ChatPanel({ formData, onFormUpdate, token, messages, onMessagesC
   const hasGreetedRef = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const wasLoadingRef = useRef(false);
+=======
+interface ChatPanelProps {
+  documentType: DocumentSlug;
+  formFields: Record<string, string>;
+  onFormUpdate: (updates: Record<string, string>) => void;
+}
+
+export function ChatPanel({ documentType, formFields, onFormUpdate }: ChatPanelProps) {
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const formFieldsRef = useRef(formFields);
+  const wasLoadingRef = useRef(false);
+  const initialChatFired = useRef(false);
+>>>>>>> origin/main
 
   useEffect(() => {
-    formDataRef.current = formData;
-  }, [formData]);
+    formFieldsRef.current = formFields;
+  }, [formFields]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView?.({ behavior: 'smooth' });
   }, [messages]);
 
+<<<<<<< HEAD
   // Refocus input after AI response lands
+=======
+  // Refocus input when AI finishes responding (UX fix)
+>>>>>>> origin/main
   useEffect(() => {
     if (wasLoadingRef.current && !isLoading) {
       inputRef.current?.focus();
@@ -69,16 +91,23 @@ export function ChatPanel({ formData, onFormUpdate, token, messages, onMessagesC
     wasLoadingRef.current = isLoading;
   }, [isLoading]);
 
+<<<<<<< HEAD
   // Trigger initial greeting only on fresh mount with empty history
   useEffect(() => {
     if (!hasGreetedRef.current && messages.length === 0) {
       hasGreetedRef.current = true;
       callChat([], formData);
     }
+=======
+  useEffect(() => {
+    if (initialChatFired.current) return;
+    initialChatFired.current = true;
+    callChat([], formFieldsRef.current);
+>>>>>>> origin/main
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function callChat(history: Message[], currentFormData: NDAFormData) {
+  async function callChat(history: Message[], currentFields: Record<string, string>) {
     setIsLoading(true);
     try {
       const res = await fetch('/api/chat', {
@@ -88,15 +117,19 @@ export function ChatPanel({ formData, onFormUpdate, token, messages, onMessagesC
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
+          document_type: documentType,
           messages: history,
-          current_form_data: currentFormData,
+          current_form_data: currentFields,
         }),
       });
       if (!res.ok) throw new Error('Chat request failed');
       const data = await res.json();
 
       if (data.form_updates) {
-        const updates = applyFormUpdates(currentFormData, data.form_updates);
+        const updates: Record<string, string> = {};
+        for (const [key, value] of Object.entries(data.form_updates)) {
+          if (value != null) updates[key] = String(value);
+        }
         if (Object.keys(updates).length > 0) {
           onFormUpdate(updates);
         }
@@ -118,9 +151,16 @@ export function ChatPanel({ formData, onFormUpdate, token, messages, onMessagesC
     const text = input.trim();
     if (!text || isLoading) return;
     setInput('');
+<<<<<<< HEAD
     const newHistory: Message[] = [...messages, { role: 'user', content: text }];
     onMessagesChange(newHistory);
     callChat(newHistory, formDataRef.current);
+=======
+    const userMessage: Message = { role: 'user', content: text };
+    const newHistory = [...messages, userMessage];
+    setMessages(newHistory);
+    callChat(newHistory, formFieldsRef.current);
+>>>>>>> origin/main
   }
 
   return (
