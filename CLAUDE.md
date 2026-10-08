@@ -8,7 +8,7 @@ The available documents are covered in the catalog.json file in the project root
 
 @catalog.json
 
-The current implementation has a Mutual NDA form with live preview and PDF download, behind a fake login screen, served via a Dockerised FastAPI backend.
+The current implementation supports AI-assisted drafting of all 11 legal document types from the catalog, with live preview and PDF download (Mutual NDA only), behind a fake login screen, served via a Dockerised FastAPI backend.
 
 ## Development process
 
@@ -74,5 +74,22 @@ Backend available at http://localhost:8000
 - Fake login page at `/login` (any credentials accepted, session stored in `localStorage`)
 - Auth guard on main page; Sign out button in header
 
+### Completed (PL-7)
+- AI chat interface using LiteLLM → OpenRouter → `openrouter/openai/gpt-oss-120b` with Cerebras inference
+- Structured Outputs (Pydantic `response_format`) to populate NDA fields from conversation
+- `POST /api/chat` endpoint; initial greeting on mount, live form updates from AI replies
+
+### Completed (PL-8)
+- Expanded AI chat to support all 11 document types via `DOCUMENT_SCHEMAS` registry in `backend/main.py`
+- Generic flat `Record<string, string>` form state; NDA uses `flatFieldsToNDA()` adapter for typed preview/PDF
+- Document type selector bar; switching document type resets chat and form
+- `GenericDocumentPreview` component for non-NDA types (progress bar, camelCase→label conversion, fill-status footer)
+- Disabled PDF download button for non-NDA types with explanatory tooltip
+- UX: chat input refocuses after each AI response (`wasLoadingRef` pattern)
+- UX: system prompt instructs AI to always ask a follow-on question when more info is needed
+- Prompt injection defense: `model_validator` allowlists form field keys, clamps values to 500 chars
+- 20 backend tests; frontend Jest tests cover ChatPanel and GenericDocumentPreview
+
 ### Current API Endpoints
 - `GET /api/health` - Health check
+- `POST /api/chat` - AI chat; accepts `document_type`, `messages`, `current_form_data`; returns `reply` + `form_updates`

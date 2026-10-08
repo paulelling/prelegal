@@ -3,11 +3,57 @@
 import { useState, useEffect, useRef } from 'react';
 import type { DocumentSlug } from '@/types/nda';
 
-interface Message {
+export interface Message {
   role: 'user' | 'assistant';
   content: string;
 }
 
+<<<<<<< HEAD
+interface FormUpdates {
+  purpose?: string | null;
+  effectiveDate?: string | null;
+  mndaTermType?: 'expires' | 'continues' | null;
+  mndaTermYears?: number | null;
+  confidentialityTermType?: 'years' | 'perpetuity' | null;
+  confidentialityTermYears?: number | null;
+  governingLaw?: string | null;
+  jurisdiction?: string | null;
+  modifications?: string | null;
+  party1?: Partial<NDAFormData['party1']> | null;
+  party2?: Partial<NDAFormData['party2']> | null;
+}
+
+export interface ChatPanelProps {
+  formData: NDAFormData;
+  onFormUpdate: (updates: Partial<NDAFormData>) => void;
+  token: string;
+  messages: Message[];
+  onMessagesChange: (messages: Message[]) => void;
+}
+
+function applyFormUpdates(
+  current: Pick<NDAFormData, 'party1' | 'party2'>,
+  updates: FormUpdates,
+): Partial<NDAFormData> {
+  const { party1, party2, ...scalars } = updates;
+  const result: Partial<NDAFormData> = {};
+  for (const [key, value] of Object.entries(scalars)) {
+    if (value != null) (result as Record<string, unknown>)[key] = value;
+  }
+  if (party1 != null) result.party1 = { ...current.party1, ...party1 };
+  if (party2 != null) result.party2 = { ...current.party2, ...party2 };
+  return result;
+}
+
+export function ChatPanel({ formData, onFormUpdate, token, messages, onMessagesChange }: ChatPanelProps) {
+  const [input, setInput] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const formDataRef = useRef(formData);
+  const hasGreetedRef = useRef(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const wasLoadingRef = useRef(false);
+=======
 interface ChatPanelProps {
   documentType: DocumentSlug;
   formFields: Record<string, string>;
@@ -23,6 +69,7 @@ export function ChatPanel({ documentType, formFields, onFormUpdate }: ChatPanelP
   const formFieldsRef = useRef(formFields);
   const wasLoadingRef = useRef(false);
   const initialChatFired = useRef(false);
+>>>>>>> origin/main
 
   useEffect(() => {
     formFieldsRef.current = formFields;
@@ -32,7 +79,11 @@ export function ChatPanel({ documentType, formFields, onFormUpdate }: ChatPanelP
     messagesEndRef.current?.scrollIntoView?.({ behavior: 'smooth' });
   }, [messages]);
 
+<<<<<<< HEAD
+  // Refocus input after AI response lands
+=======
   // Refocus input when AI finishes responding (UX fix)
+>>>>>>> origin/main
   useEffect(() => {
     if (wasLoadingRef.current && !isLoading) {
       inputRef.current?.focus();
@@ -40,10 +91,19 @@ export function ChatPanel({ documentType, formFields, onFormUpdate }: ChatPanelP
     wasLoadingRef.current = isLoading;
   }, [isLoading]);
 
+<<<<<<< HEAD
+  // Trigger initial greeting only on fresh mount with empty history
+  useEffect(() => {
+    if (!hasGreetedRef.current && messages.length === 0) {
+      hasGreetedRef.current = true;
+      callChat([], formData);
+    }
+=======
   useEffect(() => {
     if (initialChatFired.current) return;
     initialChatFired.current = true;
     callChat([], formFieldsRef.current);
+>>>>>>> origin/main
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -52,7 +112,10 @@ export function ChatPanel({ documentType, formFields, onFormUpdate }: ChatPanelP
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({
           document_type: documentType,
           messages: history,
@@ -72,10 +135,10 @@ export function ChatPanel({ documentType, formFields, onFormUpdate }: ChatPanelP
         }
       }
 
-      setMessages(prev => [...prev, { role: 'assistant', content: data.reply }]);
+      onMessagesChange([...history, { role: 'assistant', content: data.reply }]);
     } catch {
-      setMessages(prev => [
-        ...prev,
+      onMessagesChange([
+        ...history,
         { role: 'assistant', content: "Sorry, I couldn't connect. Please try again." },
       ]);
     } finally {
@@ -88,10 +151,16 @@ export function ChatPanel({ documentType, formFields, onFormUpdate }: ChatPanelP
     const text = input.trim();
     if (!text || isLoading) return;
     setInput('');
+<<<<<<< HEAD
+    const newHistory: Message[] = [...messages, { role: 'user', content: text }];
+    onMessagesChange(newHistory);
+    callChat(newHistory, formDataRef.current);
+=======
     const userMessage: Message = { role: 'user', content: text };
     const newHistory = [...messages, userMessage];
     setMessages(newHistory);
     callChat(newHistory, formFieldsRef.current);
+>>>>>>> origin/main
   }
 
   return (
