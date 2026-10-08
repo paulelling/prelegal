@@ -1,9 +1,30 @@
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { ChatPanel } from '@/components/ChatPanel';
-import { defaultFormData } from '@/types/nda';
 
 const mockFetch = jest.fn();
 global.fetch = mockFetch;
+
+const ndaFields: Record<string, string> = {
+  purpose: 'Evaluating a business relationship.',
+  effectiveDate: '2024-01-01',
+  mndaTermType: 'expires',
+  mndaTermYears: '1',
+  confidentialityTermType: 'years',
+  confidentialityTermYears: '1',
+  governingLaw: '',
+  jurisdiction: '',
+  modifications: '',
+  party1Name: '',
+  party1Title: '',
+  party1Company: '',
+  party1NoticeAddress: '',
+  party1Date: '',
+  party2Name: '',
+  party2Title: '',
+  party2Company: '',
+  party2NoticeAddress: '',
+  party2Date: '',
+};
 
 function makeOkResponse(reply: string, form_updates: Record<string, unknown> = {}) {
   return {
@@ -20,7 +41,13 @@ describe('ChatPanel', () => {
   it('calls /api/chat on mount to get the initial AI greeting', async () => {
     mockFetch.mockResolvedValueOnce(makeOkResponse('Hello! How can I help?'));
 
-    render(<ChatPanel formData={defaultFormData} onFormUpdate={jest.fn()} />);
+    render(
+      <ChatPanel
+        documentType="mutual-nda"
+        formFields={ndaFields}
+        onFormUpdate={jest.fn()}
+      />,
+    );
 
     await waitFor(() => {
       expect(mockFetch).toHaveBeenCalledWith(
@@ -33,12 +60,34 @@ describe('ChatPanel', () => {
     });
   });
 
+  it('sends document_type in request body', async () => {
+    mockFetch.mockResolvedValueOnce(makeOkResponse('Hello!'));
+
+    render(
+      <ChatPanel
+        documentType="cloud-service-agreement"
+        formFields={{}}
+        onFormUpdate={jest.fn()}
+      />,
+    );
+
+    await waitFor(() => expect(mockFetch).toHaveBeenCalled());
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(body.document_type).toBe('cloud-service-agreement');
+  });
+
   it('shows user message and assistant reply after submitting', async () => {
     mockFetch
       .mockResolvedValueOnce(makeOkResponse('Hello!'))
       .mockResolvedValueOnce(makeOkResponse('Great, got it!'));
 
-    render(<ChatPanel formData={defaultFormData} onFormUpdate={jest.fn()} />);
+    render(
+      <ChatPanel
+        documentType="mutual-nda"
+        formFields={ndaFields}
+        onFormUpdate={jest.fn()}
+      />,
+    );
     await waitFor(() => screen.getByText('Hello!'));
 
     const input = screen.getByPlaceholderText('Type your message...');
@@ -51,13 +100,19 @@ describe('ChatPanel', () => {
     });
   });
 
-  it('calls onFormUpdate when AI returns field updates', async () => {
+  it('calls onFormUpdate when AI returns flat field updates', async () => {
     const onFormUpdate = jest.fn();
     mockFetch
       .mockResolvedValueOnce(makeOkResponse('Hello!'))
       .mockResolvedValueOnce(makeOkResponse('Got it!', { governingLaw: 'Delaware' }));
 
-    render(<ChatPanel formData={defaultFormData} onFormUpdate={onFormUpdate} />);
+    render(
+      <ChatPanel
+        documentType="mutual-nda"
+        formFields={ndaFields}
+        onFormUpdate={onFormUpdate}
+      />,
+    );
     await waitFor(() => screen.getByText('Hello!'));
 
     const input = screen.getByPlaceholderText('Type your message...');
@@ -77,7 +132,13 @@ describe('ChatPanel', () => {
       .mockResolvedValueOnce(makeOkResponse('Hello!'))
       .mockResolvedValueOnce(makeOkResponse('Sure, tell me more.', {}));
 
-    render(<ChatPanel formData={defaultFormData} onFormUpdate={onFormUpdate} />);
+    render(
+      <ChatPanel
+        documentType="mutual-nda"
+        formFields={ndaFields}
+        onFormUpdate={onFormUpdate}
+      />,
+    );
     await waitFor(() => screen.getByText('Hello!'));
 
     const input = screen.getByPlaceholderText('Type your message...');
@@ -88,19 +149,22 @@ describe('ChatPanel', () => {
     expect(onFormUpdate).not.toHaveBeenCalled();
   });
 
-  it('merges party updates with existing party data', async () => {
+  it('passes flat field updates directly to onFormUpdate without nested merging', async () => {
     const onFormUpdate = jest.fn();
-    const formDataWithParty = {
-      ...defaultFormData,
-      party1: { name: 'Jane', title: 'CEO', company: '', noticeAddress: '', date: '' },
-    };
+    const fieldsWithParty = { ...ndaFields, party1Name: 'Jane', party1Title: 'CEO' };
     mockFetch
       .mockResolvedValueOnce(makeOkResponse('Hello!'))
       .mockResolvedValueOnce(
-        makeOkResponse('Got it!', { party1: { company: 'Acme' } }),
+        makeOkResponse('Got it!', { party1Company: 'Acme' }),
       );
 
-    render(<ChatPanel formData={formDataWithParty} onFormUpdate={onFormUpdate} />);
+    render(
+      <ChatPanel
+        documentType="mutual-nda"
+        formFields={fieldsWithParty}
+        onFormUpdate={onFormUpdate}
+      />,
+    );
     await waitFor(() => screen.getByText('Hello!'));
 
     const input = screen.getByPlaceholderText('Type your message...');
@@ -109,10 +173,30 @@ describe('ChatPanel', () => {
 
     await waitFor(() => {
       expect(onFormUpdate).toHaveBeenCalledWith(
-        expect.objectContaining({
-          party1: expect.objectContaining({ company: 'Acme', name: 'Jane' }),
-        }),
+        expect.objectContaining({ party1Company: 'Acme' }),
       );
     });
+  });
+
+  it('refocuses the input after the AI responds', async () => {
+    mockFetch
+      .mockResolvedValueOnce(makeOkResponse('Hello!'))
+      .mockResolvedValueOnce(makeOkResponse('Got it!'));
+
+    render(
+      <ChatPanel
+        documentType="mutual-nda"
+        formFields={ndaFields}
+        onFormUpdate={jest.fn()}
+      />,
+    );
+    await waitFor(() => screen.getByText('Hello!'));
+
+    const input = screen.getByPlaceholderText('Type your message...');
+    fireEvent.change(input, { target: { value: 'Hello there' } });
+    fireEvent.submit(input.closest('form')!);
+
+    await waitFor(() => screen.getByText('Got it!'));
+    expect(document.activeElement).toBe(input);
   });
 });
