@@ -13,17 +13,40 @@ def _make_mock_acompletion(reply: str, form_updates: dict) -> AsyncMock:
     return AsyncMock(return_value=mock_response)
 
 
+import pytest
+
+
 def test_build_system_prompt_mentions_both_parties():
-    from main import build_system_prompt, CurrentFormData
-    prompt = build_system_prompt(CurrentFormData())
+    from main import build_system_prompt
+    prompt = build_system_prompt({}, "mutual-nda")
     assert "Party 1" in prompt
     assert "Party 2" in prompt
 
 
 def test_build_system_prompt_serialises_form_data():
-    from main import build_system_prompt, CurrentFormData
-    prompt = build_system_prompt(CurrentFormData(governingLaw="Delaware"))
+    from main import build_system_prompt
+    prompt = build_system_prompt({"governingLaw": "Delaware"}, "mutual-nda")
     assert "Delaware" in prompt
+
+
+@pytest.mark.parametrize("doc_type,expected_parties", [
+    ("mutual-nda", ["Party 1", "Party 2"]),
+    ("cloud-service-agreement", ["Provider", "Customer"]),
+    ("design-partner-agreement", ["Provider", "Partner"]),
+    ("service-level-agreement", ["Provider", "Customer"]),
+    ("professional-services-agreement", ["Provider", "Customer"]),
+    ("partnership-agreement", ["Party 1", "Party 2"]),
+    ("software-license-agreement", ["Licensor", "Licensee"]),
+    ("data-processing-agreement", ["Controller", "Processor"]),
+    ("pilot-agreement", ["Provider", "Customer"]),
+    ("business-associate-agreement", ["Covered Entity", "Business Associate"]),
+    ("ai-addendum", ["Party 1", "Party 2"]),
+])
+def test_build_system_prompt_dispatches_for_all_document_types(doc_type, expected_parties):
+    from main import build_system_prompt
+    prompt = build_system_prompt({}, doc_type)
+    for party in expected_parties:
+        assert party in prompt, f"Expected '{party}' in prompt for {doc_type}"
 
 
 def test_chat_endpoint_returns_reply_and_form_updates():
@@ -40,10 +63,10 @@ def test_chat_endpoint_returns_reply_and_form_updates():
     assert "form_updates" in data
 
 
-def test_chat_endpoint_returns_populated_fields():
+def test_chat_endpoint_returns_populated_flat_fields():
     with patch(
         "main.acompletion",
-        _make_mock_acompletion("Got it!", {"governingLaw": "California", "party1": {"company": "Acme"}}),
+        _make_mock_acompletion("Got it!", {"governingLaw": "California", "party1Company": "Acme"}),
     ):
         from main import app
         with TestClient(app) as client:
@@ -57,7 +80,37 @@ def test_chat_endpoint_returns_populated_fields():
     assert response.status_code == 200
     data = response.json()
     assert data["form_updates"]["governingLaw"] == "California"
-    assert data["form_updates"]["party1"]["company"] == "Acme"
+    assert data["form_updates"]["party1Company"] == "Acme"
+
+
+def test_chat_endpoint_accepts_document_type():
+    with patch("main.acompletion", _make_mock_acompletion("Hello! Let's set up your Cloud Service Agreement.", {})):
+        from main import app
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/chat",
+                json={
+                    "document_type": "cloud-service-agreement",
+                    "messages": [],
+                    "current_form_data": {},
+                },
+            )
+    assert response.status_code == 200
+    assert response.json()["reply"]
+
+
+def test_chat_endpoint_rejects_unknown_document_type():
+    from main import app
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/chat",
+            json={
+                "document_type": "nonexistent-document-type",
+                "messages": [],
+                "current_form_data": {},
+            },
+        )
+    assert response.status_code == 422
 
 
 def test_chat_endpoint_accepts_empty_messages():

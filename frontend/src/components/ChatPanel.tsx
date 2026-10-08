@@ -1,82 +1,72 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { NDAFormData } from '@/types/nda';
+import type { DocumentSlug } from '@/types/nda';
 
 interface Message {
   role: 'user' | 'assistant';
   content: string;
 }
 
-interface FormUpdates {
-  purpose?: string | null;
-  effectiveDate?: string | null;
-  mndaTermType?: 'expires' | 'continues' | null;
-  mndaTermYears?: number | null;
-  confidentialityTermType?: 'years' | 'perpetuity' | null;
-  confidentialityTermYears?: number | null;
-  governingLaw?: string | null;
-  jurisdiction?: string | null;
-  modifications?: string | null;
-  party1?: Partial<NDAFormData['party1']> | null;
-  party2?: Partial<NDAFormData['party2']> | null;
-}
-
 interface ChatPanelProps {
-  formData: NDAFormData;
-  onFormUpdate: (updates: Partial<NDAFormData>) => void;
+  documentType: DocumentSlug;
+  formFields: Record<string, string>;
+  onFormUpdate: (updates: Record<string, string>) => void;
 }
 
-function applyFormUpdates(
-  current: Pick<NDAFormData, 'party1' | 'party2'>,
-  updates: FormUpdates,
-): Partial<NDAFormData> {
-  const { party1, party2, ...scalars } = updates;
-  const result: Partial<NDAFormData> = {};
-  for (const [key, value] of Object.entries(scalars)) {
-    if (value != null) (result as Record<string, unknown>)[key] = value;
-  }
-  if (party1 != null) result.party1 = { ...current.party1, ...party1 };
-  if (party2 != null) result.party2 = { ...current.party2, ...party2 };
-  return result;
-}
-
-export function ChatPanel({ formData, onFormUpdate }: ChatPanelProps) {
+export function ChatPanel({ documentType, formFields, onFormUpdate }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const formDataRef = useRef(formData);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const formFieldsRef = useRef(formFields);
+  const wasLoadingRef = useRef(false);
+  const initialChatFired = useRef(false);
 
   useEffect(() => {
-    formDataRef.current = formData;
-  }, [formData]);
+    formFieldsRef.current = formFields;
+  }, [formFields]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView?.({ behavior: 'smooth' });
   }, [messages]);
 
+  // Refocus input when AI finishes responding (UX fix)
   useEffect(() => {
-    callChat([], formData);
+    if (wasLoadingRef.current && !isLoading) {
+      inputRef.current?.focus();
+    }
+    wasLoadingRef.current = isLoading;
+  }, [isLoading]);
+
+  useEffect(() => {
+    if (initialChatFired.current) return;
+    initialChatFired.current = true;
+    callChat([], formFieldsRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function callChat(history: Message[], currentFormData: NDAFormData) {
+  async function callChat(history: Message[], currentFields: Record<string, string>) {
     setIsLoading(true);
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          document_type: documentType,
           messages: history,
-          current_form_data: currentFormData,
+          current_form_data: currentFields,
         }),
       });
       if (!res.ok) throw new Error('Chat request failed');
       const data = await res.json();
 
       if (data.form_updates) {
-        const updates = applyFormUpdates(currentFormData, data.form_updates);
+        const updates: Record<string, string> = {};
+        for (const [key, value] of Object.entries(data.form_updates)) {
+          if (value != null) updates[key] = String(value);
+        }
         if (Object.keys(updates).length > 0) {
           onFormUpdate(updates);
         }
@@ -101,7 +91,7 @@ export function ChatPanel({ formData, onFormUpdate }: ChatPanelProps) {
     const userMessage: Message = { role: 'user', content: text };
     const newHistory = [...messages, userMessage];
     setMessages(newHistory);
-    callChat(newHistory, formDataRef.current);
+    callChat(newHistory, formFieldsRef.current);
   }
 
   return (
@@ -135,6 +125,7 @@ export function ChatPanel({ formData, onFormUpdate }: ChatPanelProps) {
 
       <form onSubmit={handleSubmit} className="pt-4 border-t border-slate-200 flex gap-2">
         <input
+          ref={inputRef}
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
