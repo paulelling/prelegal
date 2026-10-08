@@ -1,28 +1,78 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { NDAForm } from '@/components/NDAForm';
 import { NDAPreview } from '@/components/NDAPreview';
 import { DownloadButton } from '@/components/DownloadButton';
 import { defaultFormData } from '@/types/nda';
 
 export default function Home() {
+  const router = useRouter();
+  const [authState, setAuthState] = useState<'checking' | 'authenticated' | 'unauthenticated'>('checking');
+  const [userEmail, setUserEmail] = useState<string>('');
   const [formData, setFormData] = useState(defaultFormData);
+
+  useEffect(() => {
+    const raw = localStorage.getItem('prelegal_auth');
+    if (!raw) {
+      setAuthState('unauthenticated');
+    } else {
+      const parsed = JSON.parse(raw);
+      setUserEmail(parsed.email ?? '');
+      setAuthState('authenticated');
+    }
+  }, []);
+
+  useEffect(() => {
+    if (authState === 'unauthenticated') {
+      router.push('/login');
+    }
+  }, [authState, router]);
+
+  const handleSignOut = () => {
+    localStorage.removeItem('prelegal_auth');
+    router.push('/login');
+  };
+
+  if (authState !== 'authenticated') return null;
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: '#f8fafc' }}>
       {/* Header */}
       <header className="bg-white border-b border-slate-200 shadow-sm sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold" style={{ color: '#032147' }}>
-              Mutual NDA Creator
-            </h1>
-            <p className="text-sm" style={{ color: '#888888' }}>
-              Fill in the form to generate your Mutual Non-Disclosure Agreement
-            </p>
+          <div className="flex items-center gap-3">
+            <div
+              className="w-8 h-8 rounded-lg flex items-center justify-center font-bold text-white text-sm"
+              style={{ background: '#ecad0a' }}
+            >
+              P
+            </div>
+            <div>
+              <h1 className="text-xl font-bold" style={{ color: '#032147' }}>
+                Mutual NDA Creator
+              </h1>
+              <p className="text-sm" style={{ color: '#888888' }}>
+                Fill in the form to generate your Mutual Non-Disclosure Agreement
+              </p>
+            </div>
           </div>
-          <DownloadButton formData={formData} />
+          <div className="flex items-center gap-4">
+            <DownloadButton formData={formData} />
+            {userEmail && (
+              <span className="text-sm hidden sm:block" style={{ color: '#888888' }}>
+                {userEmail}
+              </span>
+            )}
+            <button
+              onClick={handleSignOut}
+              className="text-sm px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors"
+              style={{ color: '#888888' }}
+            >
+              Sign out
+            </button>
+          </div>
         </div>
       </header>
 
